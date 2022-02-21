@@ -1,0 +1,3 @@
+k8s/drone_ci/secrets.yaml
+*.crt
+*.key

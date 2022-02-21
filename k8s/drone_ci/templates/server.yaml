@@ -1,0 +1,179 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: drone-pv
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: my-local-storage
+  local:
+    path: /mnt/drone
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - darklab-cluster
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: drone-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: my-local-storage
+  resources:
+    requests:
+      storage: 25Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drone-server
+  labels:
+    app.kubernetes.io/name: drone-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: drone-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: drone-server
+    spec:
+      volumes:
+      - name: www-persistent-storage
+        persistentVolumeClaim:
+          claimName: drone-claim
+      containers:
+      - name: drone-server
+        volumeMounts:
+        - name: www-persistent-storage
+          mountPath: /data
+        image: drone/drone:2
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        env:
+        - name: DRONE_GITHUB_CLIENT_ID
+          value: {{.Values.github_client_id | quote}}
+        - name: DRONE_GITHUB_CLIENT_SECRET
+          value: {{.Values.github_secret | quote}}
+        - name: DRONE_RPC_SECRET
+          value: {{.Values.rpc_secret | quote}}
+        - name: DRONE_SERVER_HOST
+          value: "{{.Values.server_address}}:{{.Values.port}}"
+        - name: DRONE_SERVER_PROTO
+          value: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drone-server-service
+spec:
+  ports:
+    - name: tcp
+      port: 80
+      targetPort: 80
+  selector:
+   app.kubernetes.io/name: drone-server
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: shared-conf
+data:
+  htpasswd.conf: |
+    {{.Values.htpasswd}}
+  passworded-nginx.conf: |
+    upstream backend {
+      server drone-server-service;
+    }
+
+    server {
+      listen 80 ssl;
+      listen [::]:80 ssl;
+
+      server_tokens off;
+
+      # # location of SSL certificates
+      ssl_certificate /etc/nginx/ssl.crt;
+      ssl_certificate_key /etc/nginx/ssl.key;
+
+      location / {
+
+        # auth_basic "Administrators Area";
+        # auth_basic_user_file /etc/nginx/htpasswd;
+
+        proxy_pass http://backend;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_redirect off;
+
+      }
+    }
+  ssl.crt: |-
+{{ .Files.Get "files/ssl.crt" | indent 4}}
+  ssl.key: |-
+{{ .Files.Get "files/ssl.key" | indent 4}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-drone-server
+  labels:
+    app.kubernetes.io/name: nginx-drone-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-drone-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx-drone-server
+    spec:
+      volumes:
+        - name: sharedconfigs
+          configMap:
+            name: shared-conf
+            defaultMode: 0777
+      containers:
+      - name: nginx-drone-server
+        image: nginx:1.21.4-alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: sharedconfigs
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: passworded-nginx.conf
+        - name: sharedconfigs
+          mountPath: /etc/nginx/htpasswd
+          subPath: htpasswd.conf
+        - name: sharedconfigs
+          mountPath: /etc/nginx/ssl.crt
+          subPath: ssl.crt
+        - name: sharedconfigs
+          mountPath: /etc/nginx/ssl.key
+          subPath: ssl.key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drone-nginx-service
+spec:
+  type: NodePort
+  ports:
+    - name: tcp
+      port: 80
+      targetPort: 80
+      nodePort: {{.Values.port}}
+  selector:
+   app.kubernetes.io/name: nginx-drone-server
