@@ -61,8 +61,12 @@ spec:
         - containerPort: 3000
         env:
         - name: DRONE_RPC_HOST
-          value: "{{.Values.server_address}}:{{.Values.port}}"
+          value: "drone-server-service"
         - name: DRONE_RPC_PROTO
           value: http
         - name: DRONE_RPC_SECRET
           value: {{.Values.rpc_secret | quote}}
+        - name: DRONE_DEBUG
+          value: "true"
+        - name: DRONE_TRACE
+          value: "true"

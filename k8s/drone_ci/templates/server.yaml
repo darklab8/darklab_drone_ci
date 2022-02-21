@@ -40,6 +40,8 @@ metadata:
     app.kubernetes.io/name: drone-server
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: drone-server
@@ -69,7 +71,7 @@ spec:
         - name: DRONE_RPC_SECRET
           value: {{.Values.rpc_secret | quote}}
         - name: DRONE_SERVER_HOST
-          value: "{{.Values.server_address}}:{{.Values.port}}"
+          value: "drone-server-service"
         - name: DRONE_SERVER_PROTO
           value: http
 ---
