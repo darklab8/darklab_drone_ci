@@ -74,6 +74,14 @@ spec:
           value: "drone-server-service"
         - name: DRONE_SERVER_PROTO
           value: http
+        - name: DRONE_LOGS_DEBUG
+          value: "true"
+        - name: DRONE_LOGS_TEXT
+          value: "true"
+        - name: DRONE_LOGS_PRETTY
+          value: "true"
+        - name: DRONE_LOGS_COLOR
+          value: "true"
 ---
 apiVersion: v1
 kind: Service

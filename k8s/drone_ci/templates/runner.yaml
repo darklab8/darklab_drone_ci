@@ -70,3 +70,15 @@ spec:
           value: "true"
         - name: DRONE_TRACE
           value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drone-runner-service
+spec:
+  ports:
+    - name: tcp
+      port: 3000
+      targetPort: 3000
+  selector:
+   app.kubernetes.io/name: drone
